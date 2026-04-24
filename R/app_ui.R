@@ -141,7 +141,16 @@ uiSidebar <- function() {
                                                                 "chain_sums",
                                                                 "sample_replicate",
                                                                 "sample_replicate_technical")],
-                           selected = defaultInput$aesFacetRow)),
+                           selected = defaultInput$aesFacetRow),
+                         selectInput("stackMode", "Bar stacking",
+                                     choices = list(
+                                       "None (side by side)"                          = "none",
+                                       "Stack bars by amount"                         = "stack_amount",
+                                       "Stack bars by proportion within group"        = "stack_percent",
+                                       "Show proportion of total (all classes)"       = "stack_percent_all"
+                                     ),
+                                     selected = "none"
+                         )),
                 tabPanel(title = "Data",
                          selectizeInput(
                            "standardizationFeatures",
@@ -170,6 +179,16 @@ uiSidebar <- function() {
                            "imputeMissingAs0",
                            label = "Impute missing values as 0",
                            value = defaultInput$imputeMissingAs0
+                         ),
+                         div(
+                           style = "display: flex; justify-content: center; padding-top: 6px;",
+                           actionButton(
+                             "help_data_tab",
+                             label = icon("question-circle"),
+                             class = "btn-link",
+                             title = "Explain all options on this tab",
+                             style = "font-size: 18px; color: #3c8dbc; padding: 0; border: none; background: transparent; box-shadow: none;"
+                           )
                          )
                 ),
                 tabPanel(title = "Samples",
@@ -214,6 +233,13 @@ uiSidebar <- function() {
                            "lipidClassToSelect",
                            label    = "Select classes",
                            options  = list(placeholder = "empty field means no filtering based on this feature"),
+                           choices  = defaultInput$lipidClassToSelect,
+                           multiple = TRUE
+                         ),
+                         selectizeInput(
+                           "lipidClassToRemove",
+                           label    = "Remove classes",
+                           options  = list(placeholder = "Explicitly remove class"),
                            choices  = defaultInput$lipidClassToSelect,
                            multiple = TRUE
                          ),
@@ -316,7 +342,7 @@ uiBody <- function() {
                                                        "Show value of means"        = "values",
                                                        "Show value of points"       = "ind_values",
                                                        "Transform y-axis log1p"     = "log",
-                                                       "Show N per sample"          = "N",
+                                                       "Show sample (n)" = "N",
                                                        "Label points"               = "label",
                                                        "Swap x- and y-axis"         = "swap",
                                                        "Free y scale for facets"    = "free_y",

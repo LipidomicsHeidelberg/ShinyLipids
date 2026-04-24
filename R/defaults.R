@@ -27,6 +27,7 @@ defaultInput <- function() {
     # Filtering
     categoryToSelect            = NULL,
     lipidClassToSelect          = NULL,
+    lipidClassToRemove          = NULL,
     functionalCategoryToSelect  = NULL,
     filterLengthRange           = c(0L, 100L),
     filterDoubleBondsRange      = c(0L, 100L),
@@ -41,7 +42,7 @@ defaultInput <- function() {
     summariseTechnicalReplicates = TRUE,
     baselineSample          = "",
     standardizationFeatures = c(""),
-    standardizeWithinTechnicalReplicate = TRUE,
+    standardizeWithinTechnicalReplicate = FALSE,
     # Sample selection
     samplesToSelect = NULL,
     samplesToRemove = NULL,

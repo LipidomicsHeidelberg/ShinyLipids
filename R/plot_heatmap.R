@@ -18,13 +18,13 @@ createHeatmap <- function(plotData, input) {
   # Log scale, name of y-axis and percent format for standardized data
   if (input$heatLogScale) {
     plotData$value <- log1p(plotData$value)
-    if (!is.null(input$standardizationFeatures) || input$standardizeWithinTechnicalReplicate) {
+    if (any(input$standardizationFeatures != "") || input$standardizeWithinTechnicalReplicate) {
       fillName   <- "log1 apmount [ Mol % ]"
     } else {
       fillName  <- "log1p amount [ \u00b5M ]"
     }
   } else {
-    if (!is.null(input$standardizationFeatures) || input$standardizeWithinTechnicalReplicate) {
+    if (any(input$standardizationFeatures != "") || input$standardizeWithinTechnicalReplicate) {
       fillName   <- "amount [ Mol % ]"
     } else {
       fillName   <- "amount [ \u00b5M ]"

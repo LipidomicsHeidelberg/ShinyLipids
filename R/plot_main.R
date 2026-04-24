@@ -28,74 +28,162 @@ createMainPlot <- function(plotData,
                            meanPlotData,
                            pairwiseComparisons,
                            input,
-                           ranges = list(x = NULL, y = NULL)) {
+                           ranges = list(x = NULL, y = NULL),
+                           allClassMeanPlotData = NULL) {
   
+  # Friendly X-axis label lookup
+  xAxisLabels <- c(
+    "sample"                    = "Sample",
+    "sample_replicate"          = "Sample replicate",
+    "sample_replicate_technical"= "Sample (technical replicate)",
+    "class"                     = "Lipid class",
+    "lipid"                     = "Lipid species",
+    "category"                  = "Category",
+    "func_cat"                  = "Functional category",
+    "db"                        = "Number of double bonds",
+    "oh"                        = "Hydroxylation state",
+    "length"                    = "Chain length",
+    "chains"                    = "Chains",
+    "chain_sums"                = "Chain sums"
+  )
+  xAxisName <- if (!is.null(input$aesX) && input$aesX %in% names(xAxisLabels)) {
+    xAxisLabels[[input$aesX]]
+  } else {
+    input$aesX
+  }
+
   if ("length" %in% names(plotData)) {
     plotData <- plotData %>%
       mutate(length = factor(length))
-    
+
     meanPlotData <- meanPlotData %>%
       mutate(length = factor(length))
   }
   
 
   
-  plt <- ggplot(plotData, aes(x = !!sym(input$aesX), y = value)) %>% 
-    mainPlotAddColors(input$aesColor, plotData) %>% 
-    mainPlotAddBars(input$mainPlotAdditionalOptions, meanPlotData) %>% 
-    mainPlotAddPoints(input$mainPlotAdditionalOptions) %>% 
-    mainPlotAddErrorBars(input$errorbarType, meanPlotData) %>% 
-    mainPlotAddMeans(input$mainPlotAdditionalOptions, meanPlotData) %>% 
-    mainPlotAddFacets(input$aesFacetRow, input$aesFacetCol, input$mainPlotAdditionalOptions) %>% 
-    mainPlotAddValues(input$mainPlotAdditionalOptions, meanPlotData) %>% 
-    mainPlotAddPointValues(input$mainPlotAdditionalOptions) %>% 
-    mainPlotLabelPoints(input$mainPlotAdditionalOptions, input$summariseTechnicalReplicates)
-  
-  
-  # Show N
-  if ("N" %in% input$mainPlotAdditionalOptions) {
+  # Bar stacking mode (from dropdown)
+  stackMode <- input$stackMode
+  isStacked <- stackMode %in% c("stack_amount", "stack_percent") &
+    "bars" %in% input$mainPlotAdditionalOptions
+
+  if (isStacked) {
+    validate(need(
+      input$aesColor != "",
+      "Stacked bars require a color feature to be set (e.g. class, category, or lipid species)."
+    ))
+  }
+
+  # "% of all classes": compute proportions from unfiltered-by-class data (shown side by side)
+  isPercentAll <- stackMode == "stack_percent_all" &
+    "bars" %in% input$mainPlotAdditionalOptions &
+    !is.null(allClassMeanPlotData)
+  if (isPercentAll) {
+    colorFacetCols <- c(input$aesColor, input$aesFacetCol, input$aesFacetRow)
+    colorFacetCols <- colorFacetCols[colorFacetCols != ""]
+
+    if (length(colorFacetCols) > 0) {
+      totals <- allClassMeanPlotData %>%
+        group_by(!!!syms(colorFacetCols)) %>%
+        summarise(total_value = sum(value, na.rm = TRUE), .groups = "drop")
+    } else {
+      totals <- allClassMeanPlotData %>%
+        summarise(total_value = sum(value, na.rm = TRUE), .groups = "drop")
+    }
+
+    joinCols <- intersect(colorFacetCols, names(meanPlotData))
+    meanPlotData <- meanPlotData %>%
+      left_join(totals, by = if (length(joinCols) > 0) joinCols else character()) %>%
+      mutate(value = value / total_value)
+
+    joinCols <- intersect(colorFacetCols, names(plotData))
+    plotData <- plotData %>%
+      left_join(totals, by = if (length(joinCols) > 0) joinCols else character()) %>%
+      mutate(value = value / total_value)
+  }
+
+  plt <- ggplot(plotData, aes(x = !!sym(input$aesX), y = value)) %>%
+    mainPlotAddColors(input$aesColor, plotData) %>%
+    mainPlotAddBars(input$mainPlotAdditionalOptions, meanPlotData,
+                    if (isStacked) stackMode else "none")
+
+  # Points, error bars, means, value labels are incompatible with stacked bars (but OK for % of all)
+  if (!isStacked) {
+    plt <- plt %>%
+      mainPlotAddPoints(input$mainPlotAdditionalOptions) %>%
+      mainPlotAddErrorBars(input$errorbarType, meanPlotData) %>%
+      mainPlotAddMeans(input$mainPlotAdditionalOptions, meanPlotData) %>%
+      mainPlotAddValues(input$mainPlotAdditionalOptions, meanPlotData) %>%
+      mainPlotAddPointValues(input$mainPlotAdditionalOptions) %>%
+      mainPlotLabelPoints(input$mainPlotAdditionalOptions, input$summariseTechnicalReplicates)
+  }
+
+  plt <- plt %>%
+    mainPlotAddFacets(input$aesFacetRow, input$aesFacetCol, input$mainPlotAdditionalOptions)
+
+  # Show N (sample count annotation on top of bar, incompatible with stacked bars)
+  if ("N" %in% input$mainPlotAdditionalOptions & !isStacked) {
     plt <- plt +
       geom_text(
-        data = meanPlotData,
-        aes(y = -0.99, label = N),
-        vjust = 1,
-        hjust = 0.5,
-        color = "grey10",
+        data     = meanPlotData,
+        aes(y = value, label = paste0("n=", N)),
+        vjust    = -0.5,
+        hjust    = 0.5,
+        size     = 3.5,
+        fontface = "bold",
+        color    = "grey30",
         position = position_dodge(width = 0.9)
       )
   }
-  
-  # Log scale, name of y-axis and percent format for standardized data
-  if ("log" %in% input$mainPlotAdditionalOptions) {
-    if (!is.null(input$standardizationFeatures) || input$standardizeWithinTechnicalReplicate) {
-      yAxisName   <- "amount [ Mol % ], log1p scale"
-      yAxisLabels <- scales::percent_format(scale = 1, accuracy = NULL)
-      yAxisTransformation  <- "log1p"
-    } else {
-      yAxisName   <- "amount [ \u00b5M ], log1p scale"
-      yAxisLabels <- waiver()
-      yAxisTransformation  <- "log1p"
-    }
+
+  # Y-axis: name, labels, transformation
+  isStandardized <- any(input$standardizationFeatures != "") ||
+    input$standardizeWithinTechnicalReplicate
+  isLog <- "log" %in% input$mainPlotAdditionalOptions
+
+  if (isPercentAll) {
+    yAxisName            <- "mean proportion of total (all classes) [ % ]"
+    yAxisLabels          <- scales::percent_format(accuracy = 1)
+    yAxisTransformation  <- "identity"
+  } else if (stackMode == "stack_percent" & isStacked) {
+    yAxisName            <- "proportion within group [ % ]"
+    yAxisLabels          <- scales::percent_format(accuracy = 1)
+    yAxisTransformation  <- "identity"
+  } else if (isLog && isStandardized) {
+    yAxisName            <- "mean amount [ Mol % ], log1p scale"
+    yAxisLabels          <- scales::percent_format(scale = 1, accuracy = NULL)
+    yAxisTransformation  <- "log1p"
+  } else if (isLog && !isStandardized) {
+    yAxisName            <- "mean amount [ \u00b5M ], log1p scale"
+    yAxisLabels          <- waiver()
+    yAxisTransformation  <- "log1p"
+  } else if (!isLog && isStandardized) {
+    yAxisName            <- "mean amount [ Mol % ]"
+    yAxisLabels          <- scales::percent_format(scale = 1, accuracy = NULL)
+    yAxisTransformation  <- "identity"
   } else {
-    if (!is.null(input$standardizationFeatures) || input$standardizeWithinTechnicalReplicate) {
-      yAxisName   <- "amount [ Mol % ]"
-      yAxisLabels <- scales::percent_format(scale = 1, accuracy = NULL)
-      yAxisTransformation  <- "identity"
-    } else {
-      yAxisName   <- "amount [ \u00b5M ]"
-      yAxisLabels <- scales::number_format()
-      yAxisTransformation  <- "identity"
-    }
+    yAxisName            <- "mean amount [ \u00b5M ]"
+    yAxisLabels          <- scales::number_format()
+    yAxisTransformation  <- "identity"
   }
-  
+
+  # Plot caption: explain N annotation if shown
+  plotCaption <- if ("N" %in% input$mainPlotAdditionalOptions & !isStacked) {
+    "n = number of samples per group"
+  } else {
+    NULL
+  }
+
   plt <- plt +
     scale_y_continuous(
       expand = expansion(mult = c(
-        if_else("N" %in% input$mainPlotAdditionalOptions, 0.05, 0), 0.05)),
+        if_else("N" %in% input$mainPlotAdditionalOptions, 0.08, 0), 0.05)),
       name   = yAxisName,
       labels = yAxisLabels,
       trans  = yAxisTransformation) +
-    coord_cartesian(xlim = ranges$x, ylim = ranges$y)
+    scale_x_discrete(name = xAxisName) +
+    labs(caption = plotCaption) +
+    coord_cartesian(xlim = ranges$x, ylim = ranges$y, clip = "off")
   
   # Swap X and Y
   if ("swap" %in% input$mainPlotAdditionalOptions) {
@@ -156,13 +244,16 @@ mainPlotAddColors <- function(plt, aesColor, plotData) {
 }
 
   
-mainPlotAddBars <- function(plt, mainPlotAdditionalOptions, meanPlotData) {
+mainPlotAddBars <- function(plt, mainPlotAdditionalOptions, meanPlotData,
+                            stackMode = "none") {
   if ("bars" %in% mainPlotAdditionalOptions) {
-    plt +
-      geom_col(
-        data     = meanPlotData,
-        position = position_dodge2(width = 0.9)
-      )
+    barPosition <- switch(stackMode,
+      "stack_amount"      = position_stack(),
+      "stack_percent"     = position_fill(),
+      "stack_percent_all" = position_stack(),  # data already pre-computed as proportions
+      position_dodge2(width = 0.9)             # "none"
+    )
+    plt + geom_col(data = meanPlotData, position = barPosition)
   } else plt
 }
 
@@ -185,7 +276,7 @@ mainPlotAddErrorBars <- function(plt, errorbarType, meanPlotData) {
     plt +
       geom_errorbar(
         data = meanPlotData,
-        position = position_dodge2(width = 0.2, padding = 0.8),
+        position = position_dodge(width = 0.9),
         aes(ymin = switch(
           errorbarType,
           "SD"   = value - SD,
@@ -198,8 +289,10 @@ mainPlotAddErrorBars <- function(plt, errorbarType, meanPlotData) {
           "SEM" = value + SEM,
           "CI"  = CI_upper
         )),
-        alpha = .8,
-        color = "black"
+        linewidth = 0.8,
+        width     = 0.3,
+        alpha     = 0.9,
+        color     = "black"
       )
   } else plt
 }
@@ -207,11 +300,14 @@ mainPlotAddErrorBars <- function(plt, errorbarType, meanPlotData) {
 mainPlotAddMeans <- function(plt, mainPlotAdditionalOptions, meanPlotData) {
   if ("mean" %in% mainPlotAdditionalOptions) {
     plt +
-      geom_errorbar(
-        data = meanPlotData,
-        aes(ymin = value, ymax = value),
-        position = position_dodge2(width = 0.9),
-        size = 1.2
+      geom_crossbar(
+        data      = meanPlotData,
+        aes(ymin  = value, ymax = value),
+        position  = position_dodge(width = 0.9),
+        linewidth = 1.0,
+        width     = 0.7,
+        fatten    = 2,
+        color     = "black"
       )
   } else plt
 }

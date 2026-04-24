@@ -86,6 +86,84 @@ app_server <- function(input, output, session) {
   # * Update selectInput for data sets
   # based on sets loaded and row selected select clicked row in table
   
+  # Help modal: full Data tab
+  observeEvent(input$help_data_tab, {
+    showModal(modalDialog(
+      title = "Data tab — what does each option do?",
+      size  = "l",
+      easyClose = TRUE,
+      footer = modalButton("Close"),
+      HTML("
+        <p>For standardization: <code>value / sum(group) × 100</code>.
+        The Y-axis switches from µM to Mol %.
+        <em>Visible</em> means only lipids passing the current filters.</p>
+
+        <p><strong>Selecting multiple options:</strong>
+        The grouping becomes the intersection of all selected features — the denominator
+        is the sum within each unique combination. Finer groups → smaller denominator → larger percentages.
+        Example: <em>Sample replicate</em> + <em>Class</em> → each species as % of its class within each replicate.
+        Selecting a more specific and a less specific feature (e.g. <em>Sample</em> + <em>Sample replicate</em>)
+        is equivalent to selecting only the more specific one.</p>
+
+        <table class='table table-bordered table-condensed' style='font-size:13px;'>
+          <thead><tr>
+            <th>Option</th><th>Formula</th><th>What sums to 100% / Effect</th>
+          </tr></thead>
+          <tbody>
+            <tr><th colspan='3' style='background:#f5f5f5;'>Standardize to 100% within (dropdown)</th></tr>
+            <tr><td><em>(nothing selected)</em></td>
+                <td>—</td>
+                <td>No standardization — Y-axis stays in µM</td></tr>
+            <tr><td>Sample</td>
+                <td><code>value / sum(sample) × 100</code></td>
+                <td>All visible lipids per sample (replicates pooled)</td></tr>
+            <tr><td>Sample replicate</td>
+                <td><code>value / sum(replicate) × 100</code></td>
+                <td>All visible lipids per biological replicate, each normalized independently</td></tr>
+            <tr><td>Class</td>
+                <td><code>value / sum(class, measurement) × 100</code></td>
+                <td>All visible species per class per measurement</td></tr>
+            <tr><td>Lipid species</td>
+                <td><code>value / sum(species) × 100</code></td>
+                <td>All occurrences of one species across the visible data</td></tr>
+            <tr><td>Category</td>
+                <td><code>value / sum(category, measurement) × 100</code></td>
+                <td>All visible species per category per measurement</td></tr>
+            <tr><td>Functional category</td>
+                <td><code>value / sum(func_cat, measurement) × 100</code></td>
+                <td>All visible species per functional category per measurement</td></tr>
+            <tr><td>Double bonds</td>
+                <td><code>value / sum(db, measurement) × 100</code></td>
+                <td>All visible species per double bond count per measurement</td></tr>
+            <tr><td>Hydroxylation state</td>
+                <td><code>value / sum(oh, measurement) × 100</code></td>
+                <td>All visible species per hydroxylation state per measurement</td></tr>
+            <tr><td>Chain Length</td>
+                <td><code>value / sum(length, measurement) × 100</code></td>
+                <td>All visible species per chain length per measurement</td></tr>
+            <tr><td>Chains</td>
+                <td><code>value / sum(chains, measurement) × 100</code></td>
+                <td>All visible species per chain composition per measurement</td></tr>
+            <tr><td>Chain sums</td>
+                <td><code>value / sum(chain_sums, measurement) × 100</code></td>
+                <td>All visible species per chain sums per measurement</td></tr>
+
+            <tr><th colspan='3' style='background:#f5f5f5;'>Checkboxes</th></tr>
+            <tr><td>Standardize to 100% within technical replicates</td>
+                <td><code>value / sum(technical replicate) × 100</code></td>
+                <td>All visible lipids per technical replicate, applied before averaging technical replicates</td></tr>
+            <tr><td>Average technical replicates</td>
+                <td><code>mean(technical replicates)</code></td>
+                <td>Technical replicates are averaged into one value per biological replicate before plotting</td></tr>
+            <tr><td>Impute missing values as 0</td>
+                <td><code>NA → 0</code></td>
+                <td>Lipids not detected in a sample are set to 0 µM instead of being omitted. Affects means and standardization denominators.</td></tr>
+          </tbody>
+        </table>
+      ")
+    ))
+  })
+
   # Reset button, using shinyjs
   observeEvent(input$resetEverything, {
     names(defaultInput()) %>% 
@@ -119,6 +197,7 @@ app_server <- function(input, output, session) {
     updateAllSelectizeInputs("categoryToSelect", "category", NULL)
     updateAllSelectizeInputs("functionalCategoryToSelect", "func_cat", NULL)
     updateAllSelectizeInputs("lipidClassToSelect", "class", NULL)
+    updateAllSelectizeInputs("lipidClassToRemove", "class", NULL)
     updateAllSelectizeInputs("quickSpeciesProfileClass", "class", "")
     
     updateAllRangeInputs <- partial(updateAllRangeInputs,
@@ -152,7 +231,8 @@ app_server <- function(input, output, session) {
       shinyjs::reset("aesFacetCol")
       shinyjs::reset("categoryToSelect")
       shinyjs::reset("functionalCategoryToSelect")
-      
+      shinyjs::reset("lipidClassToRemove")
+
       updateSelectInput(session, "aesX", selected = "lipid")
       updateSelectizeInput(session, "standardizationFeatures",
                            selected = c("class", "sample_replicate"))
@@ -169,8 +249,9 @@ app_server <- function(input, output, session) {
     shinyjs::reset("standardizationFeatures")
     shinyjs::reset("categoryToSelect")
     shinyjs::reset("lipidClassToSelect")
+    shinyjs::reset("lipidClassToRemove")
     shinyjs::reset("functionalCategoryToSelect")
-    
+
     updateSelectInput(session, "aesX", selected = "class")
   })
   
@@ -238,13 +319,32 @@ app_server <- function(input, output, session) {
       ranges$y <- NULL
     }
   }) 
+  # * allClassMeanPlotData ####
+  # Totals from data without class filtering, for "proportions relative to all"
+  allClassMeanPlotData <- reactive({
+    if (!(input$stackMode == "stack_percent_all" &
+          "bars" %in% input$mainPlotAdditionalOptions)) return(NULL)
+    req(rawData())
+
+    inputMod <- reactiveValuesToList(input)
+    inputMod$lipidClassToSelect <- NULL
+    inputMod$lipidClassToRemove <- NULL
+
+    rawData() %>%
+      filterRawDataFor(inputMod) %>%
+      standardizeWithin(inputMod) %>%
+      createPlotData(inputMod) %>%
+      summarisePlotData(inputMod)
+  })
+
   mainPlot <- reactive({
     req(plotData(), meanPlotData())
-    createMainPlot(plotData             = plotData(),
-                   meanPlotData         = meanPlotData(),
-                   pairwiseComparisons  = pairwiseComparisons(),
-                   input                = input,
-                   ranges = ranges)
+    createMainPlot(plotData              = plotData(),
+                   meanPlotData          = meanPlotData(),
+                   pairwiseComparisons   = pairwiseComparisons(),
+                   input                 = input,
+                   ranges                = ranges,
+                   allClassMeanPlotData  = allClassMeanPlotData())
   })
   
   # ** Main Plot Render ####

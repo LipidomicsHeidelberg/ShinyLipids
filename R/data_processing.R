@@ -207,7 +207,8 @@ filterIfNotNull <- function(data, var, condition) {
 filterRawDataFor <- function(rawData, input) {
   rawData %>% 
     filterIfNotNull(input$categoryToSelect, category %in% input$categoryToSelect) %>% 
-    filterIfNotNull(input$lipidClassToSelect, class %in% input$lipidClassToSelect) %>% 
+    filterIfNotNull(input$lipidClassToSelect, class %in% input$lipidClassToSelect) %>%
+    filterIfNotNull(input$lipidClassToRemove, !(class %in% input$lipidClassToRemove)) %>%
     filterIfNotNull(input$functionalCategoryToSelect, func_cat %in% input$functionalCategoryToSelect) %>% 
     filterIfNotNull(input$filterLengthRange, between(length, input$filterLengthRange[1], input$filterLengthRange[2])) %>%
     filterIfNotNull(input$filterDoubleBondsRange, between(db, input$filterDoubleBondsRange[1], input$filterDoubleBondsRange[2])) %>%
@@ -231,13 +232,26 @@ filterRawDataFor <- function(rawData, input) {
 #' @export
 standardizeWithin <- function(data, input) {
   stdFeatures <- input$standardizationFeatures
+  stdFeatures <- stdFeatures[stdFeatures != ""]
   if (input$standardizeWithinTechnicalReplicate) {
     stdFeatures <- c(stdFeatures, "sample_replicate_technical")
   }
   # Standardization
-  if (!is.null(stdFeatures)) {
+  # If the user selects a lipid-level feature (e.g. class, category), sample_identifier
+  # is added automatically so that each measurement is normalized independently.
+  # If the user selects a sample-level feature (e.g. sample, sample_replicate),
+  # sample_identifier is NOT added, preserving the intended pooling level.
+  if (length(stdFeatures) > 0) {
+    sampleVars <- c("sample", "sample_replicate",
+                    "sample_replicate_technical", "sample_identifier")
+    hasSampleDim <- any(stdFeatures %in% sampleVars)
+    groupVars <- if (hasSampleDim) {
+      c("id", stdFeatures)
+    } else {
+      c("id", "sample_identifier", stdFeatures)
+    }
     data <- data %>%
-      group_by(id, !!!syms(stdFeatures)) %>%
+      group_by(!!!syms(groupVars)) %>%
       mutate(value = value / sum(value) * 100) %>%
       ungroup()
   }
@@ -247,7 +261,7 @@ standardizeWithin <- function(data, input) {
     baseline <- data %>%
       filter(sample == input$baselineSample) %>%
       group_by(lipid) %>%
-      summarize(baseline = mean(value, na.rm = TRUE))
+      summarize(baseline = mean(value, na.rm = TRUE), .groups = "drop")
     data <- data %>%
       left_join(baseline) %>%
       mutate(baseline = if_else(is.na(baseline), 0, baseline)) %>%
@@ -278,7 +292,7 @@ createPlotData <- function(data, input) {
       group_by_at(vars(-sample_identifier,
                        -sample_replicate_technical,
                        -value)) %>%
-      summarize(value = mean(value, na.rm = TRUE))
+      summarize(value = mean(value, na.rm = TRUE), .groups = "drop")
   }
   
   cols <- c("value", input$aesX, input$aesColor, input$aesFacetCol, input$aesFacetRow,
@@ -289,8 +303,7 @@ createPlotData <- function(data, input) {
   
   data %>% 
     group_by(!!!syms(cols[cols != "value"])) %>% 
-    summarise(value = sum(value, na.rm = TRUE)) %>% 
-    ungroup()
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop")
 }
 
 #' Summarise the plot data
@@ -319,11 +332,11 @@ summarisePlotData <- function(data, input) {
       N        = n(),
       value    = mean(value, na.rm = TRUE),
       CI_lower = value - possiblyQt(1 - (0.05 / 2), N - 1) * SEM,
-      CI_upper = value + possiblyQt(1 - (0.05 / 2), N - 1) * SEM) %>%
+      CI_upper = value + possiblyQt(1 - (0.05 / 2), N - 1) * SEM,
+      .groups  = "drop") %>%
     mutate(
       CI_lower = if_else(CI_lower < 0, 0, CI_lower)
-    ) %>% 
-    ungroup()
+    )
 }
 
 # Significance Tests ####
