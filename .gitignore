@@ -3,6 +3,7 @@
 .Rhistory
 .RData
 .Ruserdata
+.idea/
 rsconnect
 *.DS_Store
 debugging.R
