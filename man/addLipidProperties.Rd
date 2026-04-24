@@ -6,11 +6,11 @@
 \usage{
 addLipidProperties(
   data,
-  lipidClassOrder = c("PC", "PC O-", "LPC", "PE", "PE O-", "PE P-", "LPE", "PS",
-    "PS O-", "PI", "PI O-", "PG", "PG O-", "LPG", "PA", "PA O-", "LPA", "CL", "MLCL",
-    "Cer", "SM", "HexCer", "SGalCer", "GM3", "Sulf", "diHexCer", "Hex2Cer", "For", "IPC",
-    "MIPC", "M(IP)2C", "Chol", "Desm", "Erg", "CE", "EE", "DAG", "TAG", "PIP", "PIP2",
-    "PIP3", "GM1Cer", "GD1Cer", "MAG", "Epi", "PGP", "WE", "FA")
+  lipidClassOrder = c("PC", "PC O-", "LPC", "PE", "PE O-", "PE P-", "LPE", "PS", "PS O-",
+    "PI", "PI O-", "PG", "PG O-", "LPG", "PA", "PA O-", "LPA", "CL", "MLCL", "Cer", "SM",
+    "HexCer", "SGalCer", "GM3", "Sulf", "diHexCer", "Hex2Cer", "For", "IPC", "MIPC",
+    "M(IP)2C", "Chol", "Desm", "Erg", "CE", "EE", "DAG", "TAG", "PIP", "PIP2", "PIP3",
+    "GM1Cer", "GD1Cer", "MAG", "Epi", "PGP", "WE", "FA")
 )
 }
 \arguments{

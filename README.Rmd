@@ -52,7 +52,7 @@ To get a first glimpse, run these lines to
 see the example data the comes with `ShinyLipids`:
 
 ```{r, eval=FALSE}
-path <- system.file("extdata/exampleDatabase.db", package = "ShinyLipids")
+path <- system.file("extdata/Sqlite.db", package = "ShinyLipids")
 databaseConnection <- DBI::dbConnect(RSQLite::SQLite(), path)
 ShinyLipids::run_app(db = databaseConnection)
 ```
