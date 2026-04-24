@@ -18,12 +18,27 @@
 #                                      port = 5432,
 #                                      user = "mathias")
 
-## Local database file
-# replace with
-# path <- "path/to/your/data.db"
-# path <- system.file("extdata/exampleDatabase.db", package = "ShinyLipids")
-path <- "inst/extdata/Sqlite.db"
-databaseConnection <- DBI::dbConnect(RSQLite::SQLite(), path)
+## Local database file (for development)
+# path <- "inst/extdata/Sqlite.db"
+# databaseConnection <- DBI::dbConnect(RSQLite::SQLite(), path)
+
+## Server database (reads password from .env)
+env_file <- "/home/ubuntu/03_flask/.env"
+if (file.exists(env_file)) {
+  env <- readLines(env_file)
+  db_pass <- sub("DB_PASSWORD=", "", grep("DB_PASSWORD", env, value = TRUE))
+  databaseConnection <- DBI::dbConnect(RPostgres::Postgres(),
+                                       dbname = "ldb",
+                                       host = "localhost",
+                                       port = 5432,
+                                       user = "dionyssis",
+                                       password = db_pass)
+} else {
+  # Fallback to local SQLite for development
+  path <- "inst/extdata/Sqlite.db"
+  databaseConnection <- DBI::dbConnect(RSQLite::SQLite(), path)
+}
 
 # Run App ####
-ShinyLipids::run_app(db = databaseConnection)
+pkgload::load_all()
+run_app(db = databaseConnection)
