@@ -1,6 +1,28 @@
 app_server <- function(input, output, session) {
-  # Auto-reconnect on disconnect
-  session$allowReconnect("force")
+  # Share link mode ####
+  # Read URL parameters once at session start
+  .query         <- isolate(parseQueryString(session$clientData$url_search))
+  .share_mode    <- isTRUE(.query[["shared"]] == "1")
+  .share_dataset <- if (!is.null(.query[["dataset"]])) as.integer(.query[["dataset"]]) else NULL
+
+  if (.share_mode && !is.null(.share_dataset)) {
+    # Auto-select the dataset once metadata is loaded
+    observe({
+      choices <- metaData()$id
+      names(choices) <- paste(metaData()$id, "-", metaData()$title)
+      updateSelectInput(session, "ID", choices = choices, selected = .share_dataset)
+    })
+    # Hide the dataset selector
+    shinyjs::hide("ID")
+    # Hide the Tables sidebar menu item and its tab body
+    shinyjs::runjs("$('[data-value=\"metadata\"]').closest('li').hide();")
+    shinyjs::runjs("$('#shiny-tab-metadata').hide();")
+    # Land on the main plot tab instead of Tables
+    shinydashboard::updateTabItems(session, "tab", selected = "main")
+  }
+
+  # Reconnect: show banner instead of silently looping ####
+  session$allowReconnect(TRUE)
 
   # Setup ####
   databaseConnection <- golem::get_golem_options("db")
@@ -600,8 +622,7 @@ app_server <- function(input, output, session) {
     )
   
   # End ####
-  # End session when window is closed
-  session$onSessionEnded(function() {
-    DBI::dbDisconnect(databaseConnection); stopApp()
-  })
+  # Note: stopApp() and dbDisconnect() removed from onSessionEnded.
+  # shiny-server uses one shared R process for all users; calling stopApp()
+  # when any session ends would kill the app for every connected user.
 }
