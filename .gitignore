@@ -15,3 +15,9 @@ inst/extdata/originalExampleDatabase.db
 .vscode/
 rsconnect/
 inst/doc
+
+# Exclude all .md files except LICENSE, README and NEWS
+*.md
+!LICENSE.md
+!README.md
+!NEWS.md
