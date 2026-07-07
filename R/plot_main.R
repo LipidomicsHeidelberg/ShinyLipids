@@ -94,12 +94,12 @@ createMainPlot <- function(plotData,
     joinCols <- intersect(colorFacetCols, names(meanPlotData))
     meanPlotData <- meanPlotData %>%
       left_join(totals, by = if (length(joinCols) > 0) joinCols else character()) %>%
-      mutate(value = value / total_value)
+      mutate(value = value / total_value * 100)
 
     joinCols <- intersect(colorFacetCols, names(plotData))
     plotData <- plotData %>%
       left_join(totals, by = if (length(joinCols) > 0) joinCols else character()) %>%
-      mutate(value = value / total_value)
+      mutate(value = value / total_value * 100)
   }
 
   # "proportion within group" side by side: pre-compute proportions, display dodged
@@ -109,11 +109,11 @@ createMainPlot <- function(plotData,
     groupCols <- groupCols[groupCols != ""]
     meanPlotData <- meanPlotData %>%
       group_by(!!!syms(groupCols)) %>%
-      mutate(value = value / sum(value, na.rm = TRUE)) %>%
+      mutate(value = value / sum(value, na.rm = TRUE) * 100) %>%
       ungroup()
     plotData <- plotData %>%
       group_by(!!!syms(groupCols)) %>%
-      mutate(value = value / sum(value, na.rm = TRUE)) %>%
+      mutate(value = value / sum(value, na.rm = TRUE) * 100) %>%
       ungroup()
   }
 
@@ -158,15 +158,15 @@ createMainPlot <- function(plotData,
 
   if (isPercentAll) {
     yAxisName            <- "mean proportion of total (all classes) [ % ]"
-    yAxisLabels          <- scales::percent_format(accuracy = 1)
+    yAxisLabels          <- scales::percent_format(scale = 1, accuracy = 1)
     yAxisTransformation  <- "identity"
   } else if (stackMode == "stack_percent" & isStacked) {
     yAxisName            <- "proportion within group [ % ]"
-    yAxisLabels          <- scales::percent_format(accuracy = 1)
+    yAxisLabels          <- scales::percent_format(scale = 1, accuracy = 1)
     yAxisTransformation  <- "identity"
   } else if (isSbsPercent) {
     yAxisName            <- "proportion within group [ % ]"
-    yAxisLabels          <- scales::percent_format(accuracy = 1)
+    yAxisLabels          <- scales::percent_format(scale = 1, accuracy = 1)
     yAxisTransformation  <- "identity"
   } else if (isLog && isStandardized) {
     yAxisName            <- "mean amount [ Mol % ], log1p scale"
