@@ -1,4 +1,5 @@
 # Setup of the ShinyApp <- keep this comment for RStudio ####
+options(shiny.autoload.r = FALSE)
 
 # Deployment ####
 # To deploy, run: rsconnect::deployApp()
@@ -26,6 +27,7 @@
 env_file <- "/home/ubuntu/03_flask/.env"
 if (file.exists(env_file)) {
   env <- readLines(env_file)
+  #TODO check Sys.getenv,user, dbname etc.
   db_pass <- sub("DB_PASSWORD=", "", grep("DB_PASSWORD", env, value = TRUE))
   databaseConnection <- DBI::dbConnect(RPostgres::Postgres(),
                                        dbname = "ldb",
@@ -35,6 +37,7 @@ if (file.exists(env_file)) {
                                        password = db_pass)
 } else {
   # Fallback to local SQLite for development
+  #TODO check better options for else
   path <- "inst/extdata/Sqlite.db"
   databaseConnection <- DBI::dbConnect(RSQLite::SQLite(), path)
 }
