@@ -23,17 +23,17 @@ options(shiny.autoload.r = FALSE)
 # path <- "inst/extdata/Sqlite.db"
 # databaseConnection <- DBI::dbConnect(RSQLite::SQLite(), path)
 
-## Server database (reads password from .env)
+## Server database (reads user + password from .env)
 env_file <- "/home/ubuntu/03_flask/.env"
 if (file.exists(env_file)) {
   env <- readLines(env_file)
-  #TODO check Sys.getenv,user, dbname etc.
-  db_pass <- sub("DB_PASSWORD=", "", grep("DB_PASSWORD", env, value = TRUE))
+  db_user <- sub("DB_USERNAME=", "", grep("^DB_USERNAME=", env, value = TRUE))
+  db_pass <- sub("DB_PASSWORD=", "", grep("^DB_PASSWORD=", env, value = TRUE))
   databaseConnection <- DBI::dbConnect(RPostgres::Postgres(),
                                        dbname = "ldb",
                                        host = "localhost",
                                        port = 5432,
-                                       user = Sys.getenv("DB_USER"),
+                                       user = db_user,
                                        password = db_pass)
 } else {
   # Fallback to local SQLite for development
