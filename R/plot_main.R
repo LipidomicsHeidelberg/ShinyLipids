@@ -102,6 +102,21 @@ createMainPlot <- function(plotData,
       mutate(value = value / total_value)
   }
 
+  # "proportion within group" side by side: pre-compute proportions, display dodged
+  isSbsPercent <- stackMode == "sbs_percent" & "bars" %in% input$mainPlotAdditionalOptions
+  if (isSbsPercent) {
+    groupCols <- c(input$aesX, input$aesFacetCol, input$aesFacetRow)
+    groupCols <- groupCols[groupCols != ""]
+    meanPlotData <- meanPlotData %>%
+      group_by(!!!syms(groupCols)) %>%
+      mutate(value = value / sum(value, na.rm = TRUE)) %>%
+      ungroup()
+    plotData <- plotData %>%
+      group_by(!!!syms(groupCols)) %>%
+      mutate(value = value / sum(value, na.rm = TRUE)) %>%
+      ungroup()
+  }
+
   plt <- ggplot(plotData, aes(x = !!sym(input$aesX), y = value)) %>%
     mainPlotAddColors(input$aesColor, plotData) %>%
     mainPlotAddBars(input$mainPlotAdditionalOptions, meanPlotData,
@@ -146,6 +161,10 @@ createMainPlot <- function(plotData,
     yAxisLabels          <- scales::percent_format(accuracy = 1)
     yAxisTransformation  <- "identity"
   } else if (stackMode == "stack_percent" & isStacked) {
+    yAxisName            <- "proportion within group [ % ]"
+    yAxisLabels          <- scales::percent_format(accuracy = 1)
+    yAxisTransformation  <- "identity"
+  } else if (isSbsPercent) {
     yAxisName            <- "proportion within group [ % ]"
     yAxisLabels          <- scales::percent_format(accuracy = 1)
     yAxisTransformation  <- "identity"
