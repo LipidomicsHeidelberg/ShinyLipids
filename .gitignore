@@ -3,7 +3,6 @@
 .Rhistory
 .RData
 .Ruserdata
-.idea/
 rsconnect
 *.DS_Store
 debugging.R
@@ -15,6 +14,7 @@ inst/extdata/originalExampleDatabase.db
 .vscode/
 rsconnect/
 inst/doc
+.idea/
 
 # Exclude all .md files except LICENSE, README and NEWS
 *.md
