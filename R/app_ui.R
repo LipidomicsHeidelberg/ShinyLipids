@@ -20,6 +20,10 @@ uiHeader <- function() {
   shinydashboard::dashboardHeader(
     title = span(tagList(icon("flask"),
                          span("ShinyLipids"))),
+    tags$li(
+      class = "dropdown home-center-btn",
+      a(href = "https://lipidomics-hd.bzh.uni-heidelberg.de", icon("home"), " Home")
+    ),
     shinydashboard::dropdownMenu(
       type       = "notification",
       badgeStatus = NULL,
@@ -144,10 +148,11 @@ uiSidebar <- function() {
                            selected = defaultInput$aesFacetRow),
                          selectInput("stackMode", "Bar stacking",
                                      choices = list(
-                                       "None (side by side)"                          = "none",
-                                       "Stack bars by amount"                         = "stack_amount",
-                                       "Stack bars by proportion within group"        = "stack_percent",
-                                       "Show proportion of total (all classes)"       = "stack_percent_all"
+                                       "Side by side by amount"                                 = "none",
+                                       "Stack bars by amount"                                   = "stack_amount",
+                                       "Side by side by proportion within group"                = "sbs_percent",
+                                       "Stack bars by proportion within group"                  = "stack_percent",
+                                       "Show proportion of total (all classes)"                 = "stack_percent_all"
                                      ),
                                      selected = "none"
                          )),
@@ -232,28 +237,32 @@ uiSidebar <- function() {
                          selectizeInput(
                            "lipidClassToSelect",
                            label    = "Select classes",
-                           options  = list(placeholder = "empty field means no filtering based on this feature"),
+                           options  = list(placeholder = "empty field means no filtering based on this feature",
+                                           plugins = list("remove_button")),
                            choices  = defaultInput$lipidClassToSelect,
                            multiple = TRUE
                          ),
                          selectizeInput(
                            "lipidClassToRemove",
                            label    = "Remove classes",
-                           options  = list(placeholder = "Explicitly remove class"),
+                           options  = list(placeholder = "Explicitly remove class",
+                                           plugins = list("remove_button")),
                            choices  = defaultInput$lipidClassToSelect,
                            multiple = TRUE
                          ),
                          selectizeInput(
                            "categoryToSelect",
                            label    = "Select categories",
-                           options  = list(placeholder = "empty field means no filtering based on this feature"),
+                           options  = list(placeholder = "empty field means no filtering based on this feature",
+                                           plugins = list("remove_button")),
                            choices  = defaultInput$categoryToSelect,
                            multiple = TRUE
                          ),
                          selectizeInput(
                            "functionalCategoryToSelect",
                            label    = "Select functional categories",
-                           options  = list(placeholder = "empty field means no filtering based on this feature"),
+                           options  = list(placeholder = "empty field means no filtering based on this feature",
+                                           plugins = list("remove_button")),
                            choices  = defaultInput$functionalCategoryToSelect,
                            multiple = TRUE
                          ),
@@ -286,7 +295,60 @@ uiSidebar <- function() {
 uiBody <- function() {
   defaultInput <- defaultInput()
   shinydashboard::dashboardBody(
+    tags$head(tags$style(HTML("
+      .home-center-btn {
+        position: absolute !important;
+        left: 50%; top: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 800;
+      }
+      .home-center-btn > a {
+        padding: 0.3rem 0.9rem !important;
+        color: #fff !important;
+        font-size: 0.85rem;
+        text-decoration: none !important;
+        background: rgba(255,255,255,0.2);
+        border-radius: 20px;
+        transition: background 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .home-center-btn > a:hover { background: rgba(255,255,255,0.35) !important; }
+    "))),
     shinyjs::useShinyjs(),
+    # ** Fix for empty selectize dropdowns after updateSelectizeInput ####
+    # Shiny 1.13.0 updateSelectizeInput (server = FALSE) calls selectize.destroy()
+    # then immediately reinitialises, but selectize's destroy() never clears the
+    # element's `.selectize` back-reference. The reinit guard `if (this.selectize)
+    # return;` (selectize.js) therefore skips rebuilding the widget, leaving the
+    # dropdown empty even though the <option> elements were inserted. Patching
+    # destroy() to drop that reference lets Shiny's own reinit run, fixing every
+    # selectize input uniformly with no per-input timing hacks.
+    tags$head(tags$script(HTML("
+      (function() {
+        function patch() {
+          if (window.Selectize && Selectize.prototype &&
+              !Selectize.prototype.__shinyDestroyPatch) {
+            var orig = Selectize.prototype.destroy;
+            Selectize.prototype.destroy = function() {
+              var input = this.$input && this.$input[0];
+              orig.apply(this, arguments);
+              if (input) {
+                try { delete input.selectize; } catch (e) { input.selectize = undefined; }
+              }
+            };
+            Selectize.prototype.__shinyDestroyPatch = true;
+            return true;
+          }
+          return false;
+        }
+        if (!patch()) {
+          var t = setInterval(function() { if (patch()) clearInterval(t); }, 50);
+          setTimeout(function() { clearInterval(t); }, 15000);
+        }
+      })();
+    "))),
     # ** Database Info / Meta ####
     shinydashboard::tabItems(
       shinydashboard::tabItem(
