@@ -16,7 +16,7 @@
 #                                      dbname = "ldb",
 #                                      host = "localhost",
 #                                      port = 5432,
-#                                      user = "mathias")
+#                                      user = Sys.getenv("DB_USER"))
 
 ## Local database file (for development)
 # path <- "inst/extdata/Sqlite.db"
@@ -31,7 +31,7 @@ if (file.exists(env_file)) {
                                        dbname = "ldb",
                                        host = "localhost",
                                        port = 5432,
-                                       user = "dionyssis",
+                                       user = Sys.getenv("DB_USER"),
                                        password = db_pass)
 } else {
   # Fallback to local SQLite for development
