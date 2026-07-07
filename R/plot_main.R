@@ -94,7 +94,8 @@ createMainPlot <- function(plotData,
     joinCols <- intersect(colorFacetCols, names(meanPlotData))
     meanPlotData <- meanPlotData %>%
       left_join(totals, by = if (length(joinCols) > 0) joinCols else character()) %>%
-      mutate(value = value / total_value * 100)
+      mutate(across(any_of(c("value", "SD", "SEM", "CI_lower", "CI_upper")),
+                    ~ .x / total_value * 100))
 
     joinCols <- intersect(colorFacetCols, names(plotData))
     plotData <- plotData %>%
@@ -109,8 +110,11 @@ createMainPlot <- function(plotData,
     groupCols <- groupCols[groupCols != ""]
     meanPlotData <- meanPlotData %>%
       group_by(!!!syms(groupCols)) %>%
-      mutate(value = value / sum(value, na.rm = TRUE) * 100) %>%
-      ungroup()
+      mutate(.scaleFactor = 100 / sum(value, na.rm = TRUE)) %>%
+      ungroup() %>%
+      mutate(across(any_of(c("value", "SD", "SEM", "CI_lower", "CI_upper")),
+                    ~ .x * .scaleFactor)) %>%
+      select(-.scaleFactor)
     plotData <- plotData %>%
       group_by(!!!syms(groupCols)) %>%
       mutate(value = value / sum(value, na.rm = TRUE) * 100) %>%
