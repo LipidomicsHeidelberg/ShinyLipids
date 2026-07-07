@@ -1,4 +1,7 @@
 app_server <- function(input, output, session) {
+  # Auto-reconnect on disconnect
+  session$allowReconnect("force")
+
   # Setup ####
   databaseConnection <- golem::get_golem_options("db")
   
