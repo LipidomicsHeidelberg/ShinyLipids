@@ -52,20 +52,29 @@ createMainPlot <- function(plotData,
     input$aesX
   }
 
-  if ("length" %in% names(plotData)) {
-    plotData <- plotData %>%
-      mutate(length = factor(length))
+  opts <- input$mainPlotAdditionalOptions
 
-    meanPlotData <- meanPlotData %>%
-      mutate(length = factor(length))
+  # The same feature in rows and columns can't be facetted twice: facet it once
+  aesFacetCol <- input$aesFacetCol
+  aesFacetRow <- input$aesFacetRow
+  if (aesFacetRow != "" && aesFacetRow == aesFacetCol) {
+    aesFacetRow <- ""
   }
-  
+  # Columns that identify one bar (the grouping used by summarisePlotData)
+  meanCols <- unique(c(input$aesX, input$aesColor, aesFacetCol, aesFacetRow))
+  meanCols <- meanCols[meanCols != ""]
 
-  
+  # Numeric features are shown as categories on the discrete x-axis
+  numericFeatures <- intersect(c("length", "db", "oh"), names(plotData))
+  plotData <- plotData %>%
+    mutate(across(all_of(numericFeatures), factor))
+  meanPlotData <- meanPlotData %>%
+    mutate(across(any_of(numericFeatures), factor))
+
   # Bar stacking mode (from dropdown)
-  stackMode <- input$stackMode
-  isStacked <- stackMode %in% c("stack_amount", "stack_percent") &
-    "bars" %in% input$mainPlotAdditionalOptions
+  stackMode <- if (is.null(input$stackMode)) "none" else input$stackMode
+  isStacked <- stackMode %in% c("stack_amount", "stack_percent") &&
+    "bars" %in% opts
 
   if (isStacked) {
     validate(need(
@@ -74,79 +83,103 @@ createMainPlot <- function(plotData,
     ))
   }
 
+  # After baseline subtraction values sum to ~0, so proportions are meaningless
+  isProportionMode <- stackMode %in% c("sbs_percent", "stack_percent_all") ||
+    (isStacked && stackMode == "stack_percent")
+  if (isProportionMode) {
+    validate(need(
+      is.null(input$baselineSample) || input$baselineSample == "",
+      "Proportions can't be shown after subtracting a baseline sample (Data tab). Remove the baseline or choose another bar stacking mode."
+    ))
+  }
+
+  # Proportion modes rescale bars and points by the same factor per bar, so that
+  # points stay centred on their bar and error bars keep their relative size.
+  meanPlotData$.scaleFactor <- 1
+
   # "% of all classes": compute proportions from unfiltered-by-class data (shown side by side)
-  isPercentAll <- stackMode == "stack_percent_all" &
-    "bars" %in% input$mainPlotAdditionalOptions &
-    !is.null(allClassMeanPlotData)
+  isPercentAll <- stackMode == "stack_percent_all" && !is.null(allClassMeanPlotData)
   if (isPercentAll) {
-    colorFacetCols <- c(input$aesColor, input$aesFacetCol, input$aesFacetRow)
-    colorFacetCols <- colorFacetCols[colorFacetCols != ""]
+    # Denominator = sum over ALL lipids (all classes) within the same sample context.
+    # Only sample-level features (sample, replicates) may define that context; any
+    # lipid-level feature (class, category, species, ...) used for x / color / facets
+    # must NOT be part of the grouping, otherwise it would divide a class by itself
+    # or by its own total across samples.
+    sampleLevelCols <- c("sample", "sample_replicate", "sample_replicate_technical")
+    contextCols <- c(input$aesX, input$aesColor, aesFacetCol, aesFacetRow)
+    contextCols <- unique(contextCols[contextCols %in% sampleLevelCols])
 
-    if (length(colorFacetCols) > 0) {
-      totals <- allClassMeanPlotData %>%
-        group_by(!!!syms(colorFacetCols)) %>%
-        summarise(total_value = sum(value, na.rm = TRUE), .groups = "drop")
+    totals <- allClassMeanPlotData %>%
+      group_by(!!!syms(contextCols)) %>%
+      summarise(total_value = sum(value, na.rm = TRUE), .groups = "drop")
+
+    meanPlotData <- if (length(contextCols) > 0) {
+      left_join(meanPlotData, totals, by = contextCols)
     } else {
-      totals <- allClassMeanPlotData %>%
-        summarise(total_value = sum(value, na.rm = TRUE), .groups = "drop")
+      mutate(meanPlotData, total_value = totals$total_value)  # one grand total
     }
-
-    joinCols <- intersect(colorFacetCols, names(meanPlotData))
     meanPlotData <- meanPlotData %>%
-      left_join(totals, by = if (length(joinCols) > 0) joinCols else character()) %>%
-      mutate(across(any_of(c("value", "SD", "SEM", "CI_lower", "CI_upper")),
-                    ~ .x / total_value * 100))
-
-    joinCols <- intersect(colorFacetCols, names(plotData))
-    plotData <- plotData %>%
-      left_join(totals, by = if (length(joinCols) > 0) joinCols else character()) %>%
-      mutate(value = value / total_value * 100)
+      mutate(.scaleFactor = 100 / total_value) %>%
+      select(-total_value)
   }
 
   # "proportion within group" side by side: pre-compute proportions, display dodged
-  isSbsPercent <- stackMode == "sbs_percent" & "bars" %in% input$mainPlotAdditionalOptions
+  isSbsPercent <- stackMode == "sbs_percent"
   if (isSbsPercent) {
-    groupCols <- c(input$aesX, input$aesFacetCol, input$aesFacetRow)
+    groupCols <- unique(c(input$aesX, aesFacetCol, aesFacetRow))
     groupCols <- groupCols[groupCols != ""]
     meanPlotData <- meanPlotData %>%
       group_by(!!!syms(groupCols)) %>%
       mutate(.scaleFactor = 100 / sum(value, na.rm = TRUE)) %>%
-      ungroup() %>%
-      mutate(across(any_of(c("value", "SD", "SEM", "CI_lower", "CI_upper")),
-                    ~ .x * .scaleFactor)) %>%
-      select(-.scaleFactor)
-    plotData <- plotData %>%
-      group_by(!!!syms(groupCols)) %>%
-      mutate(value = value / sum(value, na.rm = TRUE) * 100) %>%
       ungroup()
   }
 
+  if (isPercentAll || isSbsPercent) {
+    meanPlotData <- meanPlotData %>%
+      mutate(.scaleFactor = if_else(is.finite(.scaleFactor), .scaleFactor, NA_real_))
+    plotData <- plotData %>%
+      left_join(select(meanPlotData, all_of(meanCols), ".scaleFactor"), by = meanCols) %>%
+      mutate(value = value * .scaleFactor) %>%
+      select(-".scaleFactor")
+    meanPlotData <- meanPlotData %>%
+      mutate(across(any_of(c("value", "SD", "SEM", "CI_lower", "CI_upper")),
+                    ~ .x * .scaleFactor))
+  }
+  meanPlotData <- select(meanPlotData, -".scaleFactor")
+
+  # Log scale: stacking happens after the transformation, which would add up
+  # log values, so stacked bars always use a linear scale.
+  isLog     <- "log" %in% opts
+  useLog    <- isLog && !isStacked
+  isSwapped <- "swap" %in% opts
+
   plt <- ggplot(plotData, aes(x = !!sym(input$aesX), y = value)) %>%
     mainPlotAddColors(input$aesColor, plotData) %>%
-    mainPlotAddBars(input$mainPlotAdditionalOptions, meanPlotData,
+    mainPlotAddBars(opts, meanPlotData,
                     if (isStacked) stackMode else "none")
 
   # Points, error bars, means, value labels are incompatible with stacked bars (but OK for % of all)
   if (!isStacked) {
     plt <- plt %>%
-      mainPlotAddPoints(input$mainPlotAdditionalOptions) %>%
-      mainPlotAddErrorBars(input$errorbarType, meanPlotData) %>%
-      mainPlotAddMeans(input$mainPlotAdditionalOptions, meanPlotData) %>%
-      mainPlotAddValues(input$mainPlotAdditionalOptions, meanPlotData) %>%
-      mainPlotAddPointValues(input$mainPlotAdditionalOptions) %>%
-      mainPlotLabelPoints(input$mainPlotAdditionalOptions, input$summariseTechnicalReplicates)
+      mainPlotAddPoints(opts) %>%
+      mainPlotAddErrorBars(input$errorbarType, meanPlotData, clampAtZero = useLog) %>%
+      mainPlotAddMeans(opts, meanPlotData) %>%
+      mainPlotAddValues(opts, meanPlotData) %>%
+      mainPlotAddPointValues(opts) %>%
+      mainPlotLabelPoints(opts, input$summariseTechnicalReplicates)
   }
 
   plt <- plt %>%
-    mainPlotAddFacets(input$aesFacetRow, input$aesFacetCol, input$mainPlotAdditionalOptions)
+    mainPlotAddFacets(aesFacetRow, aesFacetCol, opts)
 
   # Show N (sample count annotation on top of bar, incompatible with stacked bars)
-  if ("N" %in% input$mainPlotAdditionalOptions & !isStacked) {
+  if ("N" %in% opts && !isStacked) {
     plt <- plt +
       geom_text(
         data     = meanPlotData,
         aes(y = value, label = paste0("n=", N)),
-        vjust    = -0.5,
+        # sit above the "value of means" label when both are shown
+        vjust    = if ("values" %in% opts) -1.7 else -0.5,
         hjust    = 0.5,
         size     = 3.5,
         fontface = "bold",
@@ -158,72 +191,64 @@ createMainPlot <- function(plotData,
   # Y-axis: name, labels, transformation
   isStandardized <- any(input$standardizationFeatures != "") ||
     input$standardizeWithinTechnicalReplicate
-  isLog <- "log" %in% input$mainPlotAdditionalOptions
 
-  if (isPercentAll) {
-    yAxisName            <- "mean proportion of total (all classes) [ % ]"
-    yAxisLabels          <- scales::percent_format(scale = 1, accuracy = 1)
-    yAxisTransformation  <- "identity"
-  } else if (stackMode == "stack_percent" & isStacked) {
-    yAxisName            <- "proportion within group [ % ]"
-    yAxisLabels          <- scales::percent_format(scale = 1, accuracy = 1)
-    yAxisTransformation  <- "identity"
+  if (isStacked && stackMode == "stack_percent") {
+    # position_fill() stacks to 1
+    yAxisName   <- "proportion within group [ % ]"
+    yAxisLabels <- scales::percent_format(scale = 100, accuracy = NULL)
+  } else if (isPercentAll) {
+    yAxisName   <- "mean proportion of total (all classes) [ % ]"
+    yAxisLabels <- scales::percent_format(scale = 1, accuracy = NULL)
   } else if (isSbsPercent) {
-    yAxisName            <- "proportion within group [ % ]"
-    yAxisLabels          <- scales::percent_format(scale = 1, accuracy = 1)
-    yAxisTransformation  <- "identity"
-  } else if (isLog && isStandardized) {
-    yAxisName            <- "mean amount [ Mol % ], log1p scale"
-    yAxisLabels          <- scales::percent_format(scale = 1, accuracy = NULL)
-    yAxisTransformation  <- "log1p"
-  } else if (isLog && !isStandardized) {
-    yAxisName            <- "mean amount [ \u00b5M ], log1p scale"
-    yAxisLabels          <- waiver()
-    yAxisTransformation  <- "log1p"
-  } else if (!isLog && isStandardized) {
-    yAxisName            <- "mean amount [ Mol % ]"
-    yAxisLabels          <- scales::percent_format(scale = 1, accuracy = NULL)
-    yAxisTransformation  <- "identity"
+    yAxisName   <- "mean proportion within group [ % ]"
+    yAxisLabels <- scales::percent_format(scale = 1, accuracy = NULL)
+  } else if (isStandardized) {
+    yAxisName   <- "mean amount [ Mol % ]"
+    yAxisLabels <- scales::percent_format(scale = 1, accuracy = NULL)
   } else {
-    yAxisName            <- "mean amount [ \u00b5M ]"
-    yAxisLabels          <- scales::number_format()
-    yAxisTransformation  <- "identity"
+    yAxisName   <- "mean amount [ \u00b5M ]"
+    yAxisLabels <- if (useLog) waiver() else scales::number_format()
   }
+  if (useLog) {
+    yAxisName <- paste0(yAxisName, ", log1p scale")
+  }
+  yAxisTransformation <- if (useLog) "log1p" else "identity"
 
   # Plot caption: explain N annotation if shown
-  plotCaption <- if ("N" %in% input$mainPlotAdditionalOptions & !isStacked) {
-    "n = number of samples per group"
-  } else {
-    NULL
-  }
+  plotCaption <- c(
+    if ("N" %in% opts && !isStacked) "n = number of samples per group",
+    if (isLog && isStacked) "log1p scale is not available for stacked bars"
+  )
+  plotCaption <- if (length(plotCaption) > 0) paste(plotCaption, collapse = "\n") else NULL
 
   plt <- plt +
     scale_y_continuous(
       expand = expansion(mult = c(
-        if_else("N" %in% input$mainPlotAdditionalOptions, 0.08, 0), 0.05)),
+        if ("N" %in% opts) 0.08 else 0, 0.05)),
       name   = yAxisName,
       labels = yAxisLabels,
       trans  = yAxisTransformation) +
     scale_x_discrete(name = xAxisName) +
-    labs(caption = plotCaption) +
-    coord_cartesian(xlim = ranges$x, ylim = ranges$y, clip = "off")
-  
-  # Swap X and Y
-  if ("swap" %in% input$mainPlotAdditionalOptions) {
-    validate(
-      need(
-        !("log" %in% input$mainPlotAdditionalOptions),
-        "Swapped X and Y Axis are currently not supported for a logarithmic Y-Axis"
-      )
-    )
+    labs(caption = plotCaption)
+
+  # Zoom ranges come from the brush in screen coordinates (x = horizontal axis).
+  # Clip only while zoomed, so data outside the zoom isn't drawn over the axes.
+  clip <- if (is.null(ranges$x) && is.null(ranges$y)) "off" else "on"
+  if (isSwapped) {
     plt <- plt +
-      coord_flip()
+      coord_flip(xlim = ranges$y, ylim = ranges$x, clip = clip)
+  } else {
+    plt <- plt +
+      coord_cartesian(xlim = ranges$x, ylim = ranges$y, clip = clip)
   }
-  
+
   # Highlite significant hits
-  if ("signif" %in% input$mainPlotAdditionalOptions) {
+  if ("signif" %in% opts &&
+      !is.null(pairwiseComparisons) &&
+      all(c("p.value", input$aesX) %in% names(pairwiseComparisons))) {
     signif <- filter(pairwiseComparisons, p.value <= 0.05) %>%
-      distinct(!!sym(input$aesX))
+      distinct(!!sym(input$aesX)) %>%
+      mutate(across(any_of(numericFeatures), factor))
     if (nrow(signif) > 0) {
       plt <- plt +
         geom_text(
@@ -294,24 +319,28 @@ mainPlotAddPoints <- function(plt, mainPlotAdditionalOptions) {
   } else plt
 }
 
-mainPlotAddErrorBars <- function(plt, errorbarType, meanPlotData) {
+mainPlotAddErrorBars <- function(plt, errorbarType, meanPlotData, clampAtZero = FALSE) {
   if (errorbarType != "None") {
+    errorbarData <- meanPlotData %>%
+      mutate(
+        .ymin = switch(errorbarType,
+                       "SD"  = value - SD,
+                       "SEM" = value - SEM,
+                       "CI"  = CI_lower),
+        .ymax = switch(errorbarType,
+                       "SD"  = value + SD,
+                       "SEM" = value + SEM,
+                       "CI"  = CI_upper)
+      )
+    if (clampAtZero) {
+      # log1p is undefined below -1: don't let error bars of positive means cross 0
+      errorbarData <- mutate(errorbarData, .ymin = pmax(.ymin, pmin(value, 0)))
+    }
     plt +
       geom_errorbar(
-        data = meanPlotData,
+        data = errorbarData,
         position = position_dodge(width = 0.9),
-        aes(ymin = switch(
-          errorbarType,
-          "SD"   = value - SD,
-          "SEM"  = value - SEM,
-          "CI"   = CI_lower
-        ),
-        ymax = switch(
-          errorbarType,
-          "SD"  = value + SD,
-          "SEM" = value + SEM,
-          "CI"  = CI_upper
-        )),
+        aes(ymin = .ymin, ymax = .ymax),
         linewidth = 0.8,
         width     = 0.3,
         alpha     = 0.9,
@@ -322,39 +351,51 @@ mainPlotAddErrorBars <- function(plt, errorbarType, meanPlotData) {
 
 mainPlotAddMeans <- function(plt, mainPlotAdditionalOptions, meanPlotData) {
   if ("mean" %in% mainPlotAdditionalOptions) {
+    # ggplot2 4.0 replaced `fatten` with `middle.linewidth`
+    middleLine <- if (utils::packageVersion("ggplot2") >= "4.0.0") {
+      list(middle.linewidth = 2)
+    } else {
+      list(fatten = 2)
+    }
     plt +
-      geom_crossbar(
+      do.call(geom_crossbar, c(list(
         data      = meanPlotData,
-        aes(ymin  = value, ymax = value),
+        mapping   = aes(ymin = value, ymax = value),
         position  = position_dodge(width = 0.9),
         linewidth = 1.0,
         width     = 0.7,
-        fatten    = 2,
         color     = "black"
-      )
+      ), middleLine))
   } else plt
 }
 
 mainPlotAddFacets <- function(plt, aesFacetRow, aesFacetCol, mainPlotAdditionalOptions) {
-  if (aesFacetCol != "" | aesFacetRow != "") {
-    facet_col <- vars(!!sym(aesFacetCol))
-    facet_row <- vars(!!sym(aesFacetRow))
-    
-    if (aesFacetCol == "") {
-      facet_col <- NULL
-    }
-    if (aesFacetRow == "") {
-      facet_row <- NULL
-    }
-    
+  if (aesFacetCol == "" && aesFacetRow == "") {
+    return(plt)
+  }
+  facetRow  <- if (aesFacetRow != "") vars(!!sym(aesFacetRow))
+  facetCol  <- if (aesFacetCol != "") vars(!!sym(aesFacetCol))
+  freeValue <- "free_y" %in% mainPlotAdditionalOptions
+
+  if ("swap" %in% mainPlotAdditionalOptions) {
+    # With coord_flip the categories run vertically: transpose the grid with the
+    # axes so each panel only gets its own categories and a matching height.
     plt +
       facet_grid(
-        cols   = facet_col,
-        rows   = facet_row,
-        scales = if_else("free_y" %in% mainPlotAdditionalOptions, "free", "free_x"),
+        rows   = facetCol,
+        cols   = facetRow,
+        scales = if (freeValue) "free" else "free_y",
+        space  = "free_y"
+      )
+  } else {
+    plt +
+      facet_grid(
+        rows   = facetRow,
+        cols   = facetCol,
+        scales = if (freeValue) "free" else "free_x",
         space  = "free_x"
       )
-  } else plt
+  }
 }
 
 mainPlotAddValues <- function(plt, mainPlotAdditionalOptions, meanPlotData) {

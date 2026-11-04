@@ -50,6 +50,7 @@ defaultInput <- function() {
     replicatesToRemove = NULL,
     # Plotting, main plot
     errorbarType = "None",
+    stackMode = "none",
     mainPlotAdditionalOptions = list("points", "bars"),
     mainWidth = 20,
     mainHeight = 10,

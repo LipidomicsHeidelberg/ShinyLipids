@@ -15,6 +15,17 @@
 #' @return ggplot. Heatmap
 #' @export
 createHeatmap <- function(plotData, input) {
+  validate(need(
+    input$aesColor != "",
+    "To draw a heatmap, please select a feature to display by color (used as the y-axis of the heatmap)"
+  ))
+  # The same feature in rows and columns can't be facetted twice: facet it once
+  aesFacetCol <- input$aesFacetCol
+  aesFacetRow <- input$aesFacetRow
+  if (aesFacetRow != "" && aesFacetRow == aesFacetCol) {
+    aesFacetRow <- ""
+  }
+
   # Log scale, name of y-axis and percent format for standardized data
   if (input$heatLogScale) {
     plotData$value <- log1p(plotData$value)
@@ -54,21 +65,21 @@ createHeatmap <- function(plotData, input) {
       fill = fillName
     )
   
-  if (input$aesFacetCol != "" & input$aesFacetRow != "") {
+  if (aesFacetCol != "" & aesFacetRow != "") {
     plt <- plt +
       facet_grid(
-        rows   = vars(!!sym(input$aesFacetRow)),
-        cols   = vars(!!sym(input$aesFacetCol)),
+        rows   = vars(!!sym(aesFacetRow)),
+        cols   = vars(!!sym(aesFacetCol)),
         scales = "free"
       )
   } else {
-    if (input$aesFacetCol != "") {
+    if (aesFacetCol != "") {
       plt <- plt +
-        facet_wrap(facets = vars(!!sym(input$aesFacetCol)), scales = "free")
+        facet_wrap(facets = vars(!!sym(aesFacetCol)), scales = "free")
     }
-    if (input$aesFacetRow != "") {
+    if (aesFacetRow != "") {
       plt <- plt +
-        facet_wrap(facets = vars(!!sym(input$aesFacetRow)), scales = "free")
+        facet_wrap(facets = vars(!!sym(aesFacetRow)), scales = "free")
     }
   }
   plt
