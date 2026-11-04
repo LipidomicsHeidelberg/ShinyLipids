@@ -96,6 +96,12 @@ app_server <- function(input, output, session) {
         "To compare between samples, chose sample as the color"
       ),
       need(
+        input$aesX != "sample",
+        "To compare between samples, chose a feature other than sample for the x-axis"
+      )
+    )
+    validate(
+      need(
         length(unique(plotData()$sample)) > 1,
         "You need at least 2 samples to compare them"
       ),
@@ -347,8 +353,7 @@ app_server <- function(input, output, session) {
   # * allClassMeanPlotData ####
   # Totals from data without class filtering, for "proportions relative to all"
   allClassMeanPlotData <- reactive({
-    if (!(input$stackMode == "stack_percent_all" &
-          "bars" %in% input$mainPlotAdditionalOptions)) return(NULL)
+    if (input$stackMode != "stack_percent_all") return(NULL)
     req(rawData())
 
     inputMod <- reactiveValuesToList(input)
@@ -375,11 +380,6 @@ app_server <- function(input, output, session) {
   # ** Main Plot Render ####
   output$mainPlot <- renderPlot({
     mainPlot()
-  })
-  
-  # ** Main Plot ####
-  output$mainPlot <- renderPlot({
-    mainPlot() 
   })
   
   # * Heatmap ####
@@ -546,7 +546,7 @@ app_server <- function(input, output, session) {
   output$saveHeatmap <- 
     downloadHandler(
       filename = function() {
-        tmp <- metaData %>% filter(id == input$ID) %>% select(title)
+        tmp <- metaData() %>% filter(id == input$ID) %>% select(title)
         tmp <- as.character(tmp) %>% gsub("[[:space:]]", "_", .)
         paste0(Sys.Date(), "_", tmp, "_heatmap.pdf")
       },
@@ -572,7 +572,7 @@ app_server <- function(input, output, session) {
   output$savePCAScores <-
     downloadHandler(
       filename = function() {
-        tmp <- metaData %>% filter(id == input$ID) %>% select(title)
+        tmp <- metaData() %>% filter(id == input$ID) %>% select(title)
         tmp <- as.character(tmp) %>% gsub("[[:space:]]", "_", .)
         paste0(Sys.Date(), "_", tmp, "_pcaScoresPlot.pdf")
       },
@@ -586,7 +586,7 @@ app_server <- function(input, output, session) {
   output$savePCALoadings <-
     downloadHandler(
       filename = function() {
-        tmp <- metaData %>% filter(id == input$ID) %>% select(title)
+        tmp <- metaData() %>% filter(id == input$ID) %>% select(title)
         tmp <- as.character(tmp) %>% gsub("[[:space:]]", "_", .)
         paste0(Sys.Date(), "_", tmp, "_pcaLoadingsPlot.pdf")
       },
