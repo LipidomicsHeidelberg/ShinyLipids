@@ -155,6 +155,16 @@ uiSidebar <- function() {
                                        "Show proportion of total (all classes)"                 = "stack_percent_all"
                                      ),
                                      selected = "none"
+                         ),
+                         div(
+                           style = "display: flex; justify-content: center; padding-top: 6px;",
+                           actionButton(
+                             "help_features_tab",
+                             label = icon("question-circle"),
+                             class = "btn-link",
+                             title = "Explain all options on this tab",
+                             style = "font-size: 18px; color: #3c8dbc; padding: 0; border: none; background: transparent; box-shadow: none;"
+                           )
                          )),
                 tabPanel(title = "Data",
                          selectizeInput(

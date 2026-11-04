@@ -195,6 +195,104 @@ app_server <- function(input, output, session) {
     ))
   })
 
+  # Help modal: full Features -> Plot tab
+  observeEvent(input$help_features_tab, {
+    showModal(modalDialog(
+      title = "Features → Plot tab — what does each option do?",
+      size  = "l",
+      easyClose = TRUE,
+      footer = modalButton("Close"),
+      HTML("
+        <p>These options decide <em>how the data is grouped and drawn</em>, for the main plot,
+        the heatmap and the PCA. Each <strong>point</strong> is one replicate (biological, or technical
+        if <em>Average technical replicates</em> is off). Its value is the <strong>sum of all visible
+        lipids</strong> that share the selected features. Each <strong>bar</strong> is the mean of its points.
+        <em>Visible</em> means only lipids passing the current filters.</p>
+
+        <table class='table table-bordered table-condensed' style='font-size:13px;'>
+          <thead><tr>
+            <th>Option</th><th>What it does</th><th>Notes</th>
+          </tr></thead>
+          <tbody>
+            <tr><th colspan='3' style='background:#f5f5f5;'>Mappings (dropdowns)</th></tr>
+            <tr><td>Feature to display on x-axis</td>
+                <td>One group of bars per value of this feature</td>
+                <td>Required. In the PCA, the values of this feature become the dimensions
+                    (it can't be sample there).</td></tr>
+            <tr><td>Feature to display by color</td>
+                <td>Splits each x position into one bar per value, shown side by side or stacked</td>
+                <td>Empty = one bar per x position. Needed for stacked bars, and used as the y-axis of the heatmap.
+                    Pairwise t-tests and the PCA need <em>Sample</em> here.</td></tr>
+            <tr><td>Facetting in columns</td>
+                <td>Splits the plot into side-by-side panels, one per value</td>
+                <td>Each panel only shows the x values present in it.</td></tr>
+            <tr><td>Facetting in rows</td>
+                <td>Splits the plot into stacked panels, one per value</td>
+                <td>Choosing the same feature for rows and columns facets it once.
+                    The PCA needs both facet fields empty.</td></tr>
+
+            <tr><th colspan='3' style='background:#f5f5f5;'>Features</th></tr>
+            <tr><td>Sample</td>
+                <td>The sample group. Its replicates are the points.</td>
+                <td>For t-tests, use it as color, not on the x-axis.</td></tr>
+            <tr><td>Class</td>
+                <td>Lipid class, e.g. <code>PC</code>, <code>PE O-</code></td>
+                <td>Taken from the species name</td></tr>
+            <tr><td>Lipid species</td>
+                <td>The individual lipid, e.g. <code>PC 34:1</code></td>
+                <td>x-axis only</td></tr>
+            <tr><td>Category</td>
+                <td>Lipid category from the database, e.g. <code>GP</code>, <code>SP</code></td>
+                <td></td></tr>
+            <tr><td>Functional category</td>
+                <td>Functional category from the database</td>
+                <td></td></tr>
+            <tr><td>Double bonds</td>
+                <td>Total number of double bonds over all chains</td>
+                <td></td></tr>
+            <tr><td>Hydroxylation state</td>
+                <td>Total number of hydroxyl groups (the number after <code>;</code>)</td>
+                <td></td></tr>
+            <tr><td>Chain Length</td>
+                <td>Total number of carbon atoms over all chains</td>
+                <td>x-axis only</td></tr>
+            <tr><td>Chains</td>
+                <td>Chain composition as written, e.g. <code>16:0/18:1</code></td>
+                <td>x-axis only</td></tr>
+            <tr><td>Chain sums</td>
+                <td>Summed length:double bonds;OH, e.g. <code>34:1</code></td>
+                <td>x-axis only</td></tr>
+
+            <tr><th colspan='3' style='background:#f5f5f5;'>Bar stacking</th></tr>
+            <tr><td>Side by side by amount</td>
+                <td>Bars next to each other, height = mean amount</td>
+                <td>Default. Y-axis in µM (or Mol % if standardized on the Data tab).</td></tr>
+            <tr><td>Stack bars by amount</td>
+                <td>Bars stacked on top of each other at each x position</td>
+                <td>Needs a color feature. Points, error bars, means, labels and log scale are not shown.</td></tr>
+            <tr><td>Side by side by proportion within group</td>
+                <td><code>bar / sum(bars at the same x, in the same panel) × 100</code></td>
+                <td>The bars at each x position add up to 100%. Points and error bars are scaled by the same factor.</td></tr>
+            <tr><td>Stack bars by proportion within group</td>
+                <td>Like the one above, but stacked: every x position fills 0–100%</td>
+                <td>Needs a color feature. Points, error bars, means, labels and log scale are not shown.</td></tr>
+            <tr><td>Show proportion of total (all classes)</td>
+                <td><code>bar / sum(all lipids of all classes) × 100</code>, shown side by side</td>
+                <td>The total ignores <em>Select / Remove classes</em> but keeps all other filters.
+                    It is taken per sample (or replicate) if sample is used for x, color or facets,
+                    otherwise over everything.</td></tr>
+
+            <tr><th colspan='3' style='background:#f5f5f5;'>Good to know</th></tr>
+            <tr><td colspan='3'>The three proportion modes are not available while a baseline sample is subtracted
+                (Data tab), because the values then sum to about zero.</td></tr>
+            <tr><td colspan='3'><em>Swap x- and y-axis</em> (plot options) also swaps the facets,
+                so column panels become row panels.</td></tr>
+          </tbody>
+        </table>
+      ")
+    ))
+  })
+
   # Reset button, using shinyjs
   observeEvent(input$resetEverything, {
     names(defaultInput()) %>% 
