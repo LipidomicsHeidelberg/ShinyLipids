@@ -26,20 +26,17 @@ createHeatmap <- function(plotData, input) {
     aesFacetRow <- ""
   }
 
-  # Log scale, name of y-axis and percent format for standardized data
+  # Name of the color scale: proportion of total, standardized or plain amounts
+  if (identical(input$stackMode, "stack_percent_all")) {
+    fillName <- "proportion of total (all classes) [ % ]"
+  } else if (any(input$standardizationFeatures != "") || input$standardizeWithinTechnicalReplicate) {
+    fillName <- "amount [ Mol % ]"
+  } else {
+    fillName <- "amount [ \u00b5M ]"
+  }
   if (input$heatLogScale) {
     plotData$value <- log1p(plotData$value)
-    if (any(input$standardizationFeatures != "") || input$standardizeWithinTechnicalReplicate) {
-      fillName   <- "log1 apmount [ Mol % ]"
-    } else {
-      fillName  <- "log1p amount [ \u00b5M ]"
-    }
-  } else {
-    if (any(input$standardizationFeatures != "") || input$standardizeWithinTechnicalReplicate) {
-      fillName   <- "amount [ Mol % ]"
-    } else {
-      fillName   <- "amount [ \u00b5M ]"
-    }
+    fillName <- paste("log1p", fillName)
   }
   
   plt <- ggplot(plotData) +

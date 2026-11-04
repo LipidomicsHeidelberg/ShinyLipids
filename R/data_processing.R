@@ -271,6 +271,29 @@ standardizeWithin <- function(data, input) {
   data
 }
 
+#' Express values as percent of all lipids
+#'
+#' Used for "Show proportion of total (all classes)": every value becomes its
+#' share of the summed amount of all lipids in the same measurement (technical
+#' replicate). The total includes classes hidden by the class filters but
+#' respects all other filters. It replaces the standardization of the Data tab,
+#' which would otherwise distort the total.
+#'
+#' @param data :: tibble. Filtered data (amounts, not standardized)
+#' @param allData :: tibble. The same data without the class filters
+#'
+#' @return tibble. data with value in percent of the total
+#' @export
+standardizeToTotal <- function(data, allData) {
+  totals <- allData %>%
+    group_by(id, sample_replicate_technical) %>%
+    summarise(.total = sum(value, na.rm = TRUE), .groups = "drop")
+  data %>%
+    left_join(totals, by = c("id", "sample_replicate_technical")) %>%
+    mutate(value = value / .total * 100) %>%
+    select(-".total")
+}
+
 #' Create the data ready for plotting
 #' 
 #' Based on the aesthetic mappings.

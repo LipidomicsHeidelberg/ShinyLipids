@@ -74,9 +74,24 @@ app_server <- function(input, output, session) {
       need(
         input$aesX != "",
         "Please select a feature to display on the x-axis"))
-    
-    mainData() %>%
+
+    data <- if (input$stackMode == "stack_percent_all") totalData() else mainData()
+    data %>%
       createPlotData(input)
+  })
+
+  # * totalData ####
+  # "Show proportion of total": every measurement as % of all its lipids,
+  # including classes hidden by the class filters (other filters still apply)
+  totalData <- reactive({
+    filterInputs <- c("categoryToSelect", "functionalCategoryToSelect",
+                      "filterLengthRange", "filterDoubleBondsRange", "filterOhRange",
+                      "samplesToSelect", "samplesToRemove",
+                      "replicatesToSelect", "replicatesToRemove",
+                      "technicalReplicatesToRemove")
+    withoutClassFilters <- lapply(setNames(nm = filterInputs), function(name) input[[name]])
+    filteredData() %>%
+      standardizeToTotal(filterRawDataFor(rawData(), withoutClassFilters))
   })
   
   # * meanPlotData ####
@@ -277,10 +292,11 @@ app_server <- function(input, output, session) {
                 <td>Like the one above, but stacked: every x position fills 0–100%</td>
                 <td>Needs a color feature. Points, error bars, means, labels and log scale are not shown.</td></tr>
             <tr><td>Show proportion of total (all classes)</td>
-                <td><code>bar / sum(all lipids of all classes) × 100</code>, shown side by side</td>
+                <td><code>value / sum(all lipids of all classes in the same replicate) × 100</code>,
+                    shown side by side. Bars are the mean of these per-replicate proportions.</td>
                 <td>The total ignores <em>Select / Remove classes</em> but keeps all other filters.
-                    It is taken per sample (or replicate) if sample is used for x, color or facets,
-                    otherwise over everything.</td></tr>
+                    It replaces the standardization of the Data tab, and the heatmap, PCA and
+                    tables use the same proportions.</td></tr>
 
             <tr><th colspan='3' style='background:#f5f5f5;'>Good to know</th></tr>
             <tr><td colspan='3'>The three proportion modes are not available while a baseline sample is subtracted
@@ -448,31 +464,13 @@ app_server <- function(input, output, session) {
       ranges$y <- NULL
     }
   }) 
-  # * allClassMeanPlotData ####
-  # Totals from data without class filtering, for "proportions relative to all"
-  allClassMeanPlotData <- reactive({
-    if (input$stackMode != "stack_percent_all") return(NULL)
-    req(rawData())
-
-    inputMod <- reactiveValuesToList(input)
-    inputMod$lipidClassToSelect <- NULL
-    inputMod$lipidClassToRemove <- NULL
-
-    rawData() %>%
-      filterRawDataFor(inputMod) %>%
-      standardizeWithin(inputMod) %>%
-      createPlotData(inputMod) %>%
-      summarisePlotData(inputMod)
-  })
-
   mainPlot <- reactive({
     req(plotData(), meanPlotData())
     createMainPlot(plotData              = plotData(),
                    meanPlotData          = meanPlotData(),
                    pairwiseComparisons   = pairwiseComparisons(),
                    input                 = input,
-                   ranges                = ranges,
-                   allClassMeanPlotData  = allClassMeanPlotData())
+                   ranges                = ranges)
   })
   
   # ** Main Plot Render ####

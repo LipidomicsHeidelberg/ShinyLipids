@@ -161,16 +161,23 @@ test_that("Default PCA works", {
 
 mainPlotFor <- function(...) {
   tmpInput <- modifyList(input, list(...))
-  pd <- rawData %>%
+  data <- rawData %>%
     imputeMissingIf(tmpInput) %>%
-    addLipidProperties() %>%
-    filterRawDataFor(tmpInput) %>%
-    standardizeWithin(tmpInput) %>%
-    createPlotData(tmpInput)
+    addLipidProperties()
+  filtered <- filterRawDataFor(data, tmpInput)
+  # same as the plotData reactive in app_server
+  if (tmpInput$stackMode == "stack_percent_all") {
+    noClassFilter <- tmpInput
+    noClassFilter$lipidClassToSelect <- NULL
+    noClassFilter$lipidClassToRemove <- NULL
+    filtered <- standardizeToTotal(filtered, filterRawDataFor(data, noClassFilter))
+  } else {
+    filtered <- standardizeWithin(filtered, tmpInput)
+  }
+  pd <- createPlotData(filtered, tmpInput)
   mpd <- summarisePlotData(pd, tmpInput)
-  allClass <- if (tmpInput$stackMode == "stack_percent_all") mpd else NULL
-  plt <- createMainPlot(pd, mpd, NULL, tmpInput, allClassMeanPlotData = allClass)
-  list(plt = plt, built = ggplot_build(plt), plotData = pd, meanPlotData = mpd)
+  plt <- createMainPlot(pd, mpd, NULL, tmpInput)
+  list(plt = plt, built = ggplot_build(plt), plotData = pd, meanPlotData = mpd, data = data)
 }
 
 layerOf <- function(plt, geom) {
@@ -197,11 +204,28 @@ test_that("Side by side proportions sum to 100 and points match their bars", {
   expect_equal(pointMeans$m, pointMeans$value)
 })
 
-test_that("Proportion of total sums to 100 per sample", {
+test_that("Proportion of total sums to 100 per sample and replicate", {
   res <- mainPlotFor(stackMode = "stack_percent_all")
   bars <- res$plt$layers[[layerOf(res$plt, "GeomCol")]]$data
   sums <- bars %>% group_by(sample) %>% summarise(s = sum(value))
   expect_equal(sums$s, rep(100, nrow(sums)))
+  replicateSums <- res$plt$data %>% group_by(sample_replicate) %>% summarise(s = sum(value))
+  expect_equal(replicateSums$s, rep(100, nrow(replicateSums)))
+})
+
+test_that("Proportion of total is each replicate's share of all its lipids", {
+  # class filter and a class standardization must not change the result
+  res <- mainPlotFor(stackMode = "stack_percent_all", lipidClassToSelect = "PC",
+                     standardizationFeatures = c("class", "sample_replicate"))
+  expected <- res$data %>%
+    group_by(sample, sample_replicate) %>%
+    summarise(p = sum(value[class == "PC"]) / sum(value) * 100, .groups = "drop") %>%
+    group_by(sample) %>%
+    summarise(sd = sd(p), p = mean(p))
+  bars <- res$plt$layers[[layerOf(res$plt, "GeomCol")]]$data %>%
+    arrange(sample)
+  expect_equal(bars$value, expected$p)
+  expect_equal(bars$SD, expected$sd)
 })
 
 test_that("Stacked proportions are labelled up to 100%", {

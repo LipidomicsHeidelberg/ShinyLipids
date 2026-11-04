@@ -5,7 +5,9 @@
 #' 
 #' Uses ggplot2.
 #'
-#' @param plotData :: tibble. Data for the plot, pass it from reactive plotData()
+#' @param plotData :: tibble. Data for the plot, pass it from reactive plotData().
+#' For \code{input$stackMode == "stack_percent_all"} its values must already be
+#' percent of the total (see \code{standardizeToTotal}).
 #' @param meanPlotData :: tibble. Data of means, pass from reactive meanPlotData()
 #' @param pairwiseComparisons :: tibble. Pairwise t-tests from pairwiseComparisons()
 #' @param input :: list. Input list from shiny ui. Uses
@@ -28,8 +30,7 @@ createMainPlot <- function(plotData,
                            meanPlotData,
                            pairwiseComparisons,
                            input,
-                           ranges = list(x = NULL, y = NULL),
-                           allClassMeanPlotData = NULL) {
+                           ranges = list(x = NULL, y = NULL)) {
   
   # Friendly X-axis label lookup
   xAxisLabels <- c(
@@ -93,37 +94,13 @@ createMainPlot <- function(plotData,
     ))
   }
 
-  # Proportion modes rescale bars and points by the same factor per bar, so that
-  # points stay centred on their bar and error bars keep their relative size.
-  meanPlotData$.scaleFactor <- 1
+  # "% of all classes": plotData already holds every replicate's share of all
+  # its lipids (see standardizeToTotal), so the bars are mean proportions.
+  isPercentAll <- stackMode == "stack_percent_all"
 
-  # "% of all classes": compute proportions from unfiltered-by-class data (shown side by side)
-  isPercentAll <- stackMode == "stack_percent_all" && !is.null(allClassMeanPlotData)
-  if (isPercentAll) {
-    # Denominator = sum over ALL lipids (all classes) within the same sample context.
-    # Only sample-level features (sample, replicates) may define that context; any
-    # lipid-level feature (class, category, species, ...) used for x / color / facets
-    # must NOT be part of the grouping, otherwise it would divide a class by itself
-    # or by its own total across samples.
-    sampleLevelCols <- c("sample", "sample_replicate", "sample_replicate_technical")
-    contextCols <- c(input$aesX, input$aesColor, aesFacetCol, aesFacetRow)
-    contextCols <- unique(contextCols[contextCols %in% sampleLevelCols])
-
-    totals <- allClassMeanPlotData %>%
-      group_by(!!!syms(contextCols)) %>%
-      summarise(total_value = sum(value, na.rm = TRUE), .groups = "drop")
-
-    meanPlotData <- if (length(contextCols) > 0) {
-      left_join(meanPlotData, totals, by = contextCols)
-    } else {
-      mutate(meanPlotData, total_value = totals$total_value)  # one grand total
-    }
-    meanPlotData <- meanPlotData %>%
-      mutate(.scaleFactor = 100 / total_value) %>%
-      select(-total_value)
-  }
-
-  # "proportion within group" side by side: pre-compute proportions, display dodged
+  # "proportion within group" side by side: rescale bars and points by the same
+  # factor per bar, so points stay centred on their bar and error bars keep
+  # their relative size.
   isSbsPercent <- stackMode == "sbs_percent"
   if (isSbsPercent) {
     groupCols <- unique(c(input$aesX, aesFacetCol, aesFacetRow))
@@ -131,11 +108,7 @@ createMainPlot <- function(plotData,
     meanPlotData <- meanPlotData %>%
       group_by(!!!syms(groupCols)) %>%
       mutate(.scaleFactor = 100 / sum(value, na.rm = TRUE)) %>%
-      ungroup()
-  }
-
-  if (isPercentAll || isSbsPercent) {
-    meanPlotData <- meanPlotData %>%
+      ungroup() %>%
       mutate(.scaleFactor = if_else(is.finite(.scaleFactor), .scaleFactor, NA_real_))
     plotData <- plotData %>%
       left_join(select(meanPlotData, all_of(meanCols), ".scaleFactor"), by = meanCols) %>%
@@ -143,9 +116,9 @@ createMainPlot <- function(plotData,
       select(-".scaleFactor")
     meanPlotData <- meanPlotData %>%
       mutate(across(any_of(c("value", "SD", "SEM", "CI_lower", "CI_upper")),
-                    ~ .x * .scaleFactor))
+                    ~ .x * .scaleFactor)) %>%
+      select(-".scaleFactor")
   }
-  meanPlotData <- select(meanPlotData, -".scaleFactor")
 
   # Log scale: stacking happens after the transformation, which would add up
   # log values, so stacked bars always use a linear scale.
