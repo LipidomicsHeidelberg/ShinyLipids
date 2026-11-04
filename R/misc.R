@@ -22,8 +22,10 @@ mainScale <- function(colorCount) {
 #'
 #' @return boolean.
 testAllMoreThanOneReplicate <- function(data, aesX, aesColor) {
+  cols <- unique(c(aesX, aesColor))
+  cols <- cols[cols != ""]
   data %>%
-    group_by(!!sym(aesX), !!sym(aesColor)) %>%
+    group_by(!!!syms(cols)) %>%
     count() %>%
     pull(n) %>% 
     all(. > 1)

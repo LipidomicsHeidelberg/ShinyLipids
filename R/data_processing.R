@@ -263,7 +263,7 @@ standardizeWithin <- function(data, input) {
       group_by(lipid) %>%
       summarize(baseline = mean(value, na.rm = TRUE), .groups = "drop")
     data <- data %>%
-      left_join(baseline) %>%
+      left_join(baseline, by = "lipid") %>%
       mutate(baseline = if_else(is.na(baseline), 0, baseline)) %>%
       mutate(value = value - baseline) %>%
       ungroup()
@@ -318,24 +318,30 @@ createPlotData <- function(data, input) {
 #' @return tibble. data ready for summmary plots like barplots
 #' @export
 summarisePlotData <- function(data, input) {
-  possiblyQt <- possibly(stats::qt, otherwise = NA_real_)
-  
+  # t quantile for the 95% CI; undefined (NA) for groups with a single value
+  tQuantile <- function(N) {
+    out <- rep(NA_real_, length(N))
+    out[N > 1] <- stats::qt(1 - (0.05 / 2), N[N > 1] - 1)
+    out
+  }
+
   cols <- c(input$aesX, input$aesColor, input$aesFacetCol, input$aesFacetRow)
   cols <- cols[cols != ""]
   cols <- unique(cols)
   
   data %>%
-    group_by(!!!syms(cols)) %>% 
+    group_by(!!!syms(cols)) %>%
     summarise(
       SD       = sd(value, na.rm = TRUE),
-      SEM      = sd(value, na.rm = TRUE) / n(),
+      SEM      = sd(value, na.rm = TRUE) / sqrt(n()),
       N        = n(),
       value    = mean(value, na.rm = TRUE),
-      CI_lower = value - possiblyQt(1 - (0.05 / 2), N - 1) * SEM,
-      CI_upper = value + possiblyQt(1 - (0.05 / 2), N - 1) * SEM,
+      CI_lower = value - tQuantile(N) * SEM,
+      CI_upper = value + tQuantile(N) * SEM,
       .groups  = "drop") %>%
     mutate(
-      CI_lower = if_else(CI_lower < 0, 0, CI_lower)
+      # amounts can't be negative, but means can be after baseline subtraction
+      CI_lower = if_else(CI_lower < 0 & value >= 0, 0, CI_lower)
     )
 }
 
@@ -373,11 +379,16 @@ testPairwise <- function(data) {
 #' tests build with \code{broom::tidy} combined
 #' into one tibble.
 doAllPairwiseComparisons <- function(data, input) {
-  data %>%
+  emptyResult <- tibble(group1 = character(), group2 = character(), p.value = numeric())
+  res <- data %>%
     group_by(!!sym(input$aesX)) %>%
     nest() %>%
-    mutate(pairwise = map(data, possibly(testPairwise, tibble()))) %>%
-    unnest(pairwise) %>%
-    mutate(p.value = p.adjust(p.value, "BH")) %>%
-    select(-data)
+    mutate(pairwise = map(data, possibly(testPairwise, emptyResult))) %>%
+    select(-data) %>%
+    unnest(pairwise)
+  # unnest() drops the result columns when no test could be run at all
+  if (!"p.value" %in% names(res)) {
+    res <- bind_cols(res, emptyResult)
+  }
+  mutate(res, p.value = p.adjust(p.value, "BH"))
 }
